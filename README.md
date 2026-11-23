@@ -4,6 +4,44 @@
     </a>
 </p>
 
+# Xenia Netplay UWP — tested on a real Series S devkit
+
+> Fully vibe-coded, tested on hardware, and written up as it happened.
+> See [FORK-STORY.md](FORK-STORY.md) for how this fork was born, and
+> [#1](https://github.com/RaggedyBlueBox/xenia_uwp/issues/1) for the
+> running engineering log.
+
+**Status: Minecraft Xbox 360 Edition loads and plays.** Skate 3 and
+Need for Speed Most Wanted are in the library alongside it.
+
+![Game library on Xbox](docs/screenshots/library.png)
+
+## What this fork adds
+
+- **Minecraft world-load crash, fixed and proven.** Guest memory commits
+  that Xbox silently rejects are committed read-write first, the
+  executable code cache lives in private memory instead of dead section
+  views, and the physical pre-commit was trimmed to save commit charge.
+  Every step was measured with on-console probes —
+  see [docs/xbox-probes/](docs/xbox-probes/).
+- **A library that shows games, not system files.** Only bootable titles
+  are listed; profiles, saves, caches, and title updates stay out.
+- **Per-game plugin manager.** Enable/disable/delete patches and plugins
+  per title, plus per-file online install backed by the live
+  game-patches repo.
+- **Headless title boot** for testing, achievements dialog that scrolls
+  and closes on controller, and fixups ported from community forks
+  (credited in commit messages).
+
+## Install
+
+Grab the signed sideload package from
+[Releases](https://github.com/RaggedyBlueBox/xenia_uwp/releases), install
+the certificate, and deploy to your devkit. Everything under this line is
+the base project README, kept intact with credit.
+
+---
+
 # Xenia Canary for UWP
 
 An unofficial UWP port of Xenia Canary, targeting Windows 10/11 desktop and
