@@ -192,8 +192,7 @@ void GameAchievementsUI::OnDraw(ImGuiIO& io) {
   if (!ImGui::Begin(window_name.c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
-                        ImGuiWindowFlags_HorizontalScrollbar |
-                        ImGuiWindowFlags_VerticalScrollbar)) {
+                        ImGuiWindowFlags_HorizontalScrollbar)) {
     Close();
     ImGui::End();
     return;
