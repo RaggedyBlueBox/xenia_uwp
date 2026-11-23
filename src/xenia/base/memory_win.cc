@@ -132,8 +132,18 @@ void* AllocFixed(void* base_address, size_t length,
 #endif
   if (!result) {
     DWORD error = GetLastError();
-    XELOGE("VirtualAlloc failed: address={}, size={}, type={}, protect={}, error={}",
-           base_address, length, alloc_type, protect, error);
+    // System commit numbers tell OOM (1455) apart from protection (87)
+    // failures without needing a debugger attached.
+    MEMORYSTATUSEX mem_status = {};
+    mem_status.dwLength = sizeof(mem_status);
+    uint64_t avail_commit = 0, total_commit = 0;
+    if (::GlobalMemoryStatusEx(&mem_status)) {
+      avail_commit = mem_status.ullAvailPageFile;
+      total_commit = mem_status.ullTotalPageFile;
+    }
+    XELOGE("VirtualAlloc failed: address={}, size={}, type={}, protect={}, error={}, avail_commit={}, total_commit={}",
+           base_address, length, alloc_type, protect, error, avail_commit,
+           total_commit);
   }
   return result;
 }

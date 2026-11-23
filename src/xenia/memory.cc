@@ -1171,6 +1171,10 @@ bool BaseHeap::AllocFixed(uint32_t base_address, uint32_t size,
           xe::memory::PageAccess::kReadWrite);
       if (!result) {
         XELOGE("BaseHeap::AllocFixed failed to alloc range from host");
+        XELOGW("BaseHeap::AllocFixed context: heap={}, guest_start=0x{:X}, size=0x{:X}",
+               static_cast<int>(heap_type_),
+               uint64_t(start_page_number) * page_size_,
+               uint64_t(page_count) * page_size_);
         return false;
       }
       ApplyGuestProtection(TranslateRelative(start_page_number * page_size_),
@@ -1362,6 +1366,10 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
           xe::memory::PageAccess::kReadWrite);
       if (!result) {
         XELOGE("BaseHeap::Alloc failed to alloc range from host");
+        XELOGW("BaseHeap::Alloc context: heap={}, guest_start=0x{:X}, size=0x{:X}",
+               static_cast<int>(heap_type_),
+               uint64_t(start_page_number) << page_size_shift_,
+               uint64_t(page_count) << page_size_shift_);
         // Restore the free block since we failed.
         InsertFreeBlock(start_page_number, page_count);
         return false;

@@ -380,16 +380,28 @@ class CodeCacheBase : public CodeCache {
       }
       new_commit_mark = old_commit_mark + 16_MiB;
       if (generated_code_execute_base_ == generated_code_write_base_) {
-        xe::memory::AllocFixed(generated_code_execute_base_, new_commit_mark,
-                               xe::memory::AllocationType::kCommit,
-                               xe::memory::PageAccess::kExecuteReadWrite);
+        void* commit_result = xe::memory::AllocFixed(
+            generated_code_execute_base_, new_commit_mark,
+            xe::memory::AllocationType::kCommit,
+            xe::memory::PageAccess::kExecuteReadWrite);
+        if (!commit_result) {
+          XELOGW("CodeCache::EnsureCommitted EXECUTE commit failed: base={}, mark={}",
+                 generated_code_execute_base_, new_commit_mark);
+        }
       } else {
-        xe::memory::AllocFixed(generated_code_execute_base_, new_commit_mark,
-                               xe::memory::AllocationType::kCommit,
-                               xe::memory::PageAccess::kExecuteReadOnly);
-        xe::memory::AllocFixed(generated_code_write_base_, new_commit_mark,
-                               xe::memory::AllocationType::kCommit,
-                               xe::memory::PageAccess::kReadWrite);
+        void* exec_result = xe::memory::AllocFixed(
+            generated_code_execute_base_, new_commit_mark,
+            xe::memory::AllocationType::kCommit,
+            xe::memory::PageAccess::kExecuteReadOnly);
+        void* write_result = xe::memory::AllocFixed(
+            generated_code_write_base_, new_commit_mark,
+            xe::memory::AllocationType::kCommit,
+            xe::memory::PageAccess::kReadWrite);
+        if (!exec_result || !write_result) {
+          XELOGW("CodeCache::EnsureCommitted commit failed: exec_base={}, write_base={}, mark={}",
+                 generated_code_execute_base_, generated_code_write_base_,
+                 new_commit_mark);
+        }
       }
     } while (generated_code_commit_mark_.compare_exchange_weak(
         old_commit_mark, new_commit_mark));
