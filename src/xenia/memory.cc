@@ -113,6 +113,21 @@ static inline bool ShouldSkipHostCommit(const BaseHeap& heap) {
   return false;
 }
 
+// Xbox UWP: VirtualAlloc(MEM_COMMIT) inside a file-mapping view only succeeds
+// when the commit protection equals the section protection (PAGE_READWRITE).
+// Commit with kReadWrite, then apply the guest protection on a best-effort
+// basis. Executable host protection cannot be set on Xbox, and guest code is
+// JIT-translated, so executable guest pages stay read-write.
+static void ApplyGuestProtection(void* address, size_t length,
+                                 uint32_t protect) {
+  auto access = ToPageAccess(protect);
+  if (access == xe::memory::PageAccess::kExecuteReadOnly ||
+      access == xe::memory::PageAccess::kExecuteReadWrite) {
+    access = xe::memory::PageAccess::kReadWrite;
+  }
+  xe::memory::Protect(address, length, access, nullptr);  // failure non-fatal
+}
+
 void RandomizeMemory(void* range_start, uint32_t size) {
   if (!cvars::scribble_heap) {
     return;
@@ -246,9 +261,9 @@ bool Memory::Initialize() {
   // without any restriction. This however needs some form of validation.
   // That's why we're commiting whole physical memory range and deal with
   // allocations issues on custom page protection level.
-  for (size_t i = 1; i <= 16; i++) {
+  for (size_t i = 0; i < 32; i++) {
     xe::memory::AllocFixed(heaps_.physical.TranslateRelative(i << 24),
-                           heaps_.physical.page_size() * 0x10000,
+                           heaps_.physical.page_size() * 0x1000,
                            xe::memory::AllocationType::kCommit,
                            xe::memory::PageAccess::kReadWrite);
   }
@@ -1119,11 +1134,14 @@ bool BaseHeap::AllocFixed(uint32_t base_address, uint32_t size,
                             : xe::memory::AllocationType::kReserve;
       void* result = xe::memory::AllocFixed(
           TranslateRelative(start_page_number * page_size_),
-          page_count * page_size_, alloc_type, ToPageAccess(protect));
+          page_count * page_size_, alloc_type,
+          xe::memory::PageAccess::kReadWrite);
       if (!result) {
         XELOGE("BaseHeap::AllocFixed failed to alloc range from host");
         return false;
       }
+      ApplyGuestProtection(TranslateRelative(start_page_number * page_size_),
+                           page_count * page_size_, protect);
 
       if (cvars::scribble_heap && protect & kMemoryProtectWrite) {
         RandomizeMemory(result, page_count * page_size_);
@@ -1307,13 +1325,17 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
                             : xe::memory::AllocationType::kReserve;
       void* result = xe::memory::AllocFixed(
           TranslateRelative(start_page_number << page_size_shift_),
-          page_count << page_size_shift_, alloc_type, ToPageAccess(protect));
+          page_count << page_size_shift_, alloc_type,
+          xe::memory::PageAccess::kReadWrite);
       if (!result) {
         XELOGE("BaseHeap::Alloc failed to alloc range from host");
         // Restore the free block since we failed.
         InsertFreeBlock(start_page_number, page_count);
         return false;
       }
+      ApplyGuestProtection(
+          TranslateRelative(start_page_number << page_size_shift_),
+          page_count << page_size_shift_, protect);
 
       if (cvars::scribble_heap && (protect & kMemoryProtectWrite)) {
         RandomizeMemory(result, page_count << page_size_shift_);
