@@ -4233,36 +4233,6 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             return true;
           };
 
-      auto has_existing_patch_for_title =
-          [](const std::filesystem::path& patches_dir,
-             const std::string& title_id) {
-            if (title_id.empty() || !std::filesystem::exists(patches_dir)) {
-              return false;
-            }
-
-            std::string normalized_title_id = title_id;
-            std::transform(
-                normalized_title_id.begin(), normalized_title_id.end(),
-                normalized_title_id.begin(),
-                [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-
-            for (const auto& entry :
-                 std::filesystem::directory_iterator(patches_dir)) {
-              if (!entry.is_regular_file()) {
-                continue;
-              }
-              std::string name = entry.path().filename().string();
-              std::transform(name.begin(), name.end(), name.begin(),
-                             [](unsigned char c) {
-                               return static_cast<char>(std::toupper(c));
-                             });
-              if (name.rfind(normalized_title_id, 0) == 0) {
-                return true;
-              }
-            }
-            return false;
-          };
-
       auto open_manual_prompt =
           [this](const std::filesystem::path& dest, ManualInstallKind kind,
                  const std::string& title_id, const std::string& message) {
@@ -5708,33 +5678,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             };
 
             if (!close_context_menu) {
-            if (draw_game_context_option(FrontendText("Apply Patch"))) {
-            std::filesystem::path patches_root = storage_root / "patches";
-            std::string patches_dir = patches_root.string();
-            std::string title_id =
-                UWP::GetTitleIdFromPath(selected_game_path_);
-            if (!title_id.empty()) {
-              if (has_existing_patch_for_title(patches_root, title_id)) {
-                pending_existing_download_kind_ = ManualInstallKind::kPatch;
-                pending_existing_download_destination_ = patches_root;
-                pending_existing_download_title_id_ = title_id;
-                action_status_ = fmt::format(
-                    "Patch files for {} already exist.\n"
-                    "Re-download and override existing files, or cancel?",
-                    title_id);
-                action_popup_mode_ = ActionPopupMode::kExistingDownloadPrompt;
-                show_action_status_ = true;
-              } else {
-                begin_patch_download(title_id, patches_root);
-              }
-            } else {
-              action_status_ = "Could not resolve title ID for patch download.";
-              action_popup_mode_ = ActionPopupMode::kInfo;
-              show_action_status_ = true;
-            }
-          }
-
-          if (draw_game_context_option(FrontendText("Apply Optimized Settings"))) {
+            if (draw_game_context_option(FrontendText("Apply Optimized Settings"))) {
             std::filesystem::path config_root = storage_root / "config";
             std::string config_dir = config_root.string();
             std::string title_id =

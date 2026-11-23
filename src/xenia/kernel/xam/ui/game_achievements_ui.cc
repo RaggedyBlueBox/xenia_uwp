@@ -192,7 +192,8 @@ void GameAchievementsUI::OnDraw(ImGuiIO& io) {
   if (!ImGui::Begin(window_name.c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
-                        ImGuiWindowFlags_HorizontalScrollbar)) {
+                        ImGuiWindowFlags_HorizontalScrollbar |
+                        ImGuiWindowFlags_VerticalScrollbar)) {
     Close();
     ImGui::End();
     return;
@@ -212,6 +213,20 @@ void GameAchievementsUI::OnDraw(ImGuiIO& io) {
 
       ImGui::EndTable();
     }
+  }
+
+  // Controller navigation: D-pad scrolls long lists, B/Esc closes.
+  // Without these the dialog traps gamepad users (no scroll region or
+  // close binding existed before).
+  if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp, true)) {
+    ImGui::SetScrollY(ImGui::GetScrollY() - 60.0f);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown, true)) {
+    ImGui::SetScrollY(ImGui::GetScrollY() + 60.0f);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) ||
+      ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    dialog_open = false;
   }
 
   if (!dialog_open) {
