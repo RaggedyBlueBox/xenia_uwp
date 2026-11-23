@@ -8,7 +8,11 @@
  */
 
 #include "xenia/base/memory.h"
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+#include <winioctl.h>
+
+DECLARE_bool(uwp_file_backed_guest_memory);
 
 #include "xenia/base/platform_win.h"
 
@@ -219,6 +223,42 @@ bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
 FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
                                           size_t length, PageAccess access,
                                           bool commit) {
+  if (cvars::uwp_file_backed_guest_memory &&
+      path.native().find(L"xenia_memory_") == 0) {
+    wchar_t temp_path[MAX_PATH], temp_file[MAX_PATH];
+    if (!GetTempPathW(MAX_PATH, temp_path) ||
+        swprintf_s(temp_file, MAX_PATH, L"%sxenia-guest-%lu-%llu.tmp", temp_path,
+                   GetCurrentProcessId(), GetTickCount64()) < 0) {
+      XELOGE("Guest backing file creation failed: {}", GetLastError());
+      return kFileMappingHandleInvalid;
+    }
+    HANDLE file = CreateFileW(temp_file, GENERIC_READ | GENERIC_WRITE,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, CREATE_NEW,
+                              FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE,
+                              nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+      XELOGE("Guest backing file open failed: {}", GetLastError());
+      return kFileMappingHandleInvalid;
+    }
+    DWORD returned = 0;
+    LARGE_INTEGER file_size;
+    file_size.QuadPart = static_cast<LONGLONG>((length + 4095) & ~size_t(4095));
+    if (!DeviceIoControl(file, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0,
+                         &returned, nullptr) ||
+        !SetFilePointerEx(file, file_size, nullptr, FILE_BEGIN) ||
+        !SetEndOfFile(file)) {
+      DWORD error = GetLastError();
+      CloseHandle(file);
+      XELOGE("Guest sparse backing file setup failed: {}", error);
+      return kFileMappingHandleInvalid;
+    }
+    HANDLE mapping = CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, 0, nullptr);
+    DWORD error = mapping ? ERROR_SUCCESS : GetLastError();
+    CloseHandle(file);
+    if (!mapping) XELOGE("Guest backing file mapping failed: {}", error);
+    return mapping;
+  }
   DWORD protect =
       ToWin32ProtectFlags(access) | (commit ? SEC_COMMIT : SEC_RESERVE);
   auto full_path = "Local" / path;

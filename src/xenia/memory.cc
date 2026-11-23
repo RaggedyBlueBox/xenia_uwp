@@ -17,6 +17,9 @@
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
+
+DEFINE_bool(uwp_file_backed_guest_memory, false,
+            "Use a sparse temporary file for Xbox UWP guest memory.", "Memory");
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/threading.h"
@@ -102,6 +105,9 @@ void CrashDump() {
 }
 
 static inline bool ShouldSkipHostCommit(const BaseHeap& heap) {
+#if XE_PLATFORM_WIN32
+  if (cvars::uwp_file_backed_guest_memory) return true;
+#endif
   // When the host page size is larger than 4 KB (e.g. 16 KB on macOS ARM64,
   // 64 KB on some ARM64 Linux kernels), mprotect on 4 KB guest page boundaries
   // fails with EINVAL. All heaps are backed by a shared file mapping
@@ -261,7 +267,7 @@ bool Memory::Initialize() {
   // without any restriction. This however needs some form of validation.
   // That's why we're commiting whole physical memory range and deal with
   // allocations issues on custom page protection level.
-  for (size_t i = 0; i < 32; i++) {
+  for (size_t i = 0; i < (cvars::uwp_file_backed_guest_memory ? 0 : 32); i++) {
     xe::memory::AllocFixed(heaps_.physical.TranslateRelative(i << 24),
                            heaps_.physical.page_size() * 0x1000,
                            xe::memory::AllocationType::kCommit,
