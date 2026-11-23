@@ -386,7 +386,8 @@ class CodeCacheBase : public CodeCache {
             xe::memory::PageAccess::kExecuteReadWrite);
         if (!commit_result) {
           XELOGW("CodeCache::EnsureCommitted EXECUTE commit failed: base={}, mark={}",
-                 generated_code_execute_base_, new_commit_mark);
+                 static_cast<const void*>(generated_code_execute_base_),
+                 new_commit_mark);
         }
       } else {
         void* exec_result = xe::memory::AllocFixed(
@@ -399,7 +400,8 @@ class CodeCacheBase : public CodeCache {
             xe::memory::PageAccess::kReadWrite);
         if (!exec_result || !write_result) {
           XELOGW("CodeCache::EnsureCommitted commit failed: exec_base={}, write_base={}, mark={}",
-                 generated_code_execute_base_, generated_code_write_base_,
+                 static_cast<const void*>(generated_code_execute_base_),
+                 static_cast<const void*>(generated_code_write_base_),
                  new_commit_mark);
         }
       }
