@@ -345,6 +345,8 @@ class EmulatorWindow {
     void DrawPluginManager();
     static bool SetPatchEnabled(const std::filesystem::path& file,
                                 const std::string& patch_name, bool enable);
+    static bool RemovePatchBlock(const std::filesystem::path& file,
+                                 const std::string& patch_name);
     void DrawNoProfilePrompt(ImGuiIO& io);
 
     std::shared_ptr<ui::ImmediateTexture> GetOrCreateBackground();

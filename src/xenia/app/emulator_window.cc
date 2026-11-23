@@ -3374,6 +3374,142 @@ bool EmulatorWindow::WinRTFrontendDialog::SetPatchEnabled(
   return !ofs.fail();
 }
 
+bool EmulatorWindow::WinRTFrontendDialog::RemovePatchBlock(
+    const std::filesystem::path& file, const std::string& patch_name) {
+  std::ifstream ifs(file, std::ios::binary);
+  if (!ifs) {
+    return false;
+  }
+  std::string text((std::istreambuf_iterator<char>(ifs)),
+                   std::istreambuf_iterator<char>());
+  ifs.close();
+
+  auto trim_quotes = [](const std::string& value) {
+    size_t end = value.size();
+    while (end > 0 && (value[end - 1] == ' ' || value[end - 1] == '\t')) {
+      --end;
+    }
+    std::string trimmed = value.substr(0, end);
+    if (trimmed.size() >= 2 &&
+        ((trimmed.front() == '"' && trimmed.back() == '"') ||
+         (trimmed.front() == '\'' && trimmed.back() == '\''))) {
+      return trimmed.substr(1, trimmed.size() - 2);
+    }
+    return trimmed;
+  };
+
+  std::vector<size_t> line_starts;
+  line_starts.push_back(0);
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '\n') {
+      line_starts.push_back(i + 1);
+    }
+  }
+
+  auto line_text = [&](size_t line) {
+    size_t begin = line_starts[line];
+    size_t end = text.find('\n', begin);
+    if (end == std::string::npos) {
+      end = text.size();
+    }
+    std::string out = text.substr(begin, end - begin);
+    if (!out.empty() && out.back() == '\r') {
+      out.pop_back();
+    }
+    return out;
+  };
+
+  auto stripped = [](const std::string& line) {
+    size_t i = 0;
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) {
+      ++i;
+    }
+    return line.substr(i);
+  };
+
+  const size_t line_count = line_starts.size();
+  bool found = false;
+  for (size_t i = 0; i < line_count && !found; ++i) {
+    if (stripped(line_text(i)).rfind("[[patch]]", 0) != 0) {
+      continue;
+    }
+    size_t block_end = line_count;
+    for (size_t j = i + 1; j < line_count; ++j) {
+      std::string inner = stripped(line_text(j));
+      if (!inner.empty() && inner.front() == '[') {
+        block_end = j;
+        break;
+      }
+    }
+    for (size_t j = i; j < block_end; ++j) {
+      std::string inner = stripped(line_text(j));
+      if (inner.rfind("name", 0) == 0) {
+        size_t eq = inner.find('=');
+        if (eq == std::string::npos) {
+          continue;
+        }
+        std::string value = inner.substr(eq + 1);
+        size_t lead = 0;
+        while (lead < value.size() &&
+               (value[lead] == ' ' || value[lead] == '\t')) {
+          ++lead;
+        }
+        if (trim_quotes(value.substr(lead)) == patch_name) {
+          // Erase the whole block, including a preceding blank line so no
+          // husk lines pile up. If nothing remains, drop the file itself.
+          size_t erase_begin = line_starts[i];
+          if (erase_begin > 0 && text[erase_begin - 1] == '\n') {
+            size_t probe = erase_begin - 1;
+            bool blank_before = true;
+            while (probe > 0 && text[probe - 1] != '\n') {
+              if (text[probe - 1] != ' ' && text[probe - 1] != '\t' &&
+                  text[probe - 1] != '\r') {
+                blank_before = false;
+                break;
+              }
+              --probe;
+            }
+            if (blank_before) {
+              erase_begin = probe;
+            }
+          }
+          size_t erase_end =
+              block_end < line_count ? line_starts[block_end] : text.size();
+          text.erase(erase_begin, erase_end - erase_begin);
+          found = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!found) {
+    return false;
+  }
+
+  // No patches left: remove the husk file instead of keeping it.
+  bool any_patch_left = false;
+  {
+    size_t pos = 0;
+    while ((pos = text.find("[[patch]]", pos)) != std::string::npos) {
+      any_patch_left = true;
+      break;
+    }
+  }
+  if (!any_patch_left) {
+    std::error_code ec;
+    std::filesystem::remove(file, ec);
+    return !ec;
+  }
+
+  std::ofstream ofs(file, std::ios::binary | std::ios::trunc);
+  if (!ofs) {
+    return false;
+  }
+  ofs.write(text.data(), static_cast<std::streamsize>(text.size()));
+  ofs.close();
+  return !ofs.fail();
+}
+
 void EmulatorWindow::WinRTFrontendDialog::DrawPluginManager() {
   ImGui::SetNextWindowPos(ImVec2(320, 120), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowSize(ImVec2(1280, 800), ImGuiCond_FirstUseEver);
@@ -3428,9 +3564,15 @@ void EmulatorWindow::WinRTFrontendDialog::DrawPluginManager() {
       ImGui::SameLine();
     }
     if (ImGui::Button("Delete##delete")) {
-      std::error_code ec;
-      if (std::filesystem::remove(entry.file_path, ec) && !ec) {
-        dirty = true;
+      if (entry.is_patch) {
+        if (RemovePatchBlock(entry.file_path, entry.display_name)) {
+          dirty = true;
+        }
+      } else {
+        std::error_code ec;
+        if (std::filesystem::remove(entry.file_path, ec) && !ec) {
+          dirty = true;
+        }
       }
     }
     ImGui::PopID();
