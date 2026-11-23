@@ -28,6 +28,7 @@
 #include "xenia/base/math.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/mutex.h"
+#include "xenia/base/platform.h"
 #include "xenia/cpu/backend/code_cache.h"
 #include "xenia/cpu/function.h"
 
@@ -101,6 +102,15 @@ class CodeCacheBase : public CodeCache {
       xe::memory::CloseFileMappingHandle(mapping_, file_name_);
       mapping_ = xe::memory::kFileMappingHandleInvalid;
     }
+#if XE_PLATFORM_WINRT
+    else if (generated_code_execute_base_) {
+      // Private reservation from Initialize (no section mapping on Xbox).
+      xe::memory::DeallocFixed(generated_code_execute_base_, 0,
+                               xe::memory::DeallocationType::kRelease);
+      generated_code_execute_base_ = nullptr;
+      generated_code_write_base_ = nullptr;
+    }
+#endif
   }
 
   const std::filesystem::path& file_name() const override { return file_name_; }
@@ -301,6 +311,25 @@ class CodeCacheBase : public CodeCache {
 
     file_name_ =
         fmt::format("xenia_code_cache_{}", Clock::QueryHostTickCount());
+#if XE_PLATFORM_WINRT
+    // Xbox UWP cannot commit executable pages inside section-backed views
+    // (verified by on-device probe), but plain private EXECUTE reserve and
+    // commit works. Reserve private memory at the fixed base so all
+    // existing base-relative bookkeeping (unwind tables, lookups) stays
+    // valid; the fixed address is free because the section view that used
+    // to occupy it is skipped here.
+    generated_code_execute_base_ = reinterpret_cast<uint8_t*>(
+        xe::memory::AllocFixed(
+            reinterpret_cast<void*>(kGeneratedCodeExecuteBase),
+            kGeneratedCodeSize, xe::memory::AllocationType::kReserve,
+            xe::memory::PageAccess::kExecuteReadWrite));
+    generated_code_write_base_ = generated_code_execute_base_;
+    if (!generated_code_execute_base_) {
+      XELOGE("Unable to reserve private code cache storage at {:X}",
+             uint64_t(kGeneratedCodeExecuteBase));
+      return false;
+    }
+#else
     mapping_ = xe::memory::CreateFileMappingHandle(
         file_name_, kGeneratedCodeSize,
         xe::memory::PageAccess::kExecuteReadWrite, false);
@@ -346,6 +375,7 @@ class CodeCacheBase : public CodeCache {
         return false;
       }
     }
+#endif
 
     generated_code_map_.reserve(kMaximumFunctionCount);
     return true;
