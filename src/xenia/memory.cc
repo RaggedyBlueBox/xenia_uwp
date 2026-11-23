@@ -589,9 +589,13 @@ bool Memory::AddVirtualMappedRange(uint32_t virtual_address, uint32_t mask,
                                    cpu::MMIOReadCallback read_callback,
                                    cpu::MMIOWriteCallback write_callback) {
   if (!cvars::emit_inline_mmio_checks) {
-    if (!xe::memory::AllocFixed(TranslateVirtual(virtual_address), size,
-                                xe::memory::AllocationType::kCommit,
-                                xe::memory::PageAccess::kNoAccess)) {
+    bool protected_range = cvars::uwp_file_backed_guest_memory
+        ? xe::memory::Protect(TranslateVirtual(virtual_address), size,
+                              xe::memory::PageAccess::kNoAccess, nullptr)
+        : xe::memory::AllocFixed(TranslateVirtual(virtual_address), size,
+                                 xe::memory::AllocationType::kCommit,
+                                 xe::memory::PageAccess::kNoAccess) != nullptr;
+    if (!protected_range) {
       XELOGE("Unable to map range; commit/protect failed");
       return false;
     }
@@ -1152,9 +1156,15 @@ bool BaseHeap::AllocFixed(uint32_t base_address, uint32_t size,
       if (cvars::scribble_heap && protect & kMemoryProtectWrite) {
         RandomizeMemory(result, page_count * page_size_);
       }
-    } else if (cvars::scribble_heap && protect & kMemoryProtectWrite) {
-      RandomizeMemory(TranslateRelative(start_page_number * page_size_),
-                      page_count * page_size_);
+    } else {
+      if (cvars::uwp_file_backed_guest_memory) {
+        ApplyGuestProtection(TranslateRelative(start_page_number * page_size_),
+                             page_count * page_size_, protect);
+      }
+      if (cvars::scribble_heap && protect & kMemoryProtectWrite) {
+        RandomizeMemory(TranslateRelative(start_page_number * page_size_),
+                        page_count * page_size_);
+      }
     }
   }
 
@@ -1346,9 +1356,15 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
       if (cvars::scribble_heap && (protect & kMemoryProtectWrite)) {
         RandomizeMemory(result, page_count << page_size_shift_);
       }
-    } else if (cvars::scribble_heap && (protect & kMemoryProtectWrite)) {
-      RandomizeMemory(TranslateRelative(start_page_number << page_size_shift_),
-                      page_count << page_size_shift_);
+    } else {
+      if (cvars::uwp_file_backed_guest_memory) {
+        ApplyGuestProtection(TranslateRelative(start_page_number << page_size_shift_),
+                             page_count << page_size_shift_, protect);
+      }
+      if (cvars::scribble_heap && (protect & kMemoryProtectWrite)) {
+        RandomizeMemory(TranslateRelative(start_page_number << page_size_shift_),
+                        page_count << page_size_shift_);
+      }
     }
   }
 
