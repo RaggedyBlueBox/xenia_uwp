@@ -59,8 +59,7 @@ commit history shows it.
 
 ## Where it could go
 
-Honestly? Wherever my shelf points next. Fallout: New Vegas is already
-waiting on disk. The dream is simple: every 360 game I own, booting from
+Honestly? Wherever my shelf points next. The dream is simple: every 360 game I own, booting from
 the box under my TV, with the kinks fixed one title at a time — and
 every fix written up so the next person with a devkit doesn't start
 from zero.
