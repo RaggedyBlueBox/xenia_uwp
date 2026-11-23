@@ -3225,6 +3225,14 @@ void EmulatorWindow::WinRTFrontendDialog::RefreshPluginManagerEntries() {
     row.enabled = true;
     plugin_manager_entries_.push_back(std::move(row));
   }
+
+  std::sort(plugin_manager_entries_.begin(), plugin_manager_entries_.end(),
+            [](const PluginManagerEntry& a, const PluginManagerEntry& b) {
+              if (a.file_path != b.file_path) {
+                return a.file_path < b.file_path;
+              }
+              return a.display_name < b.display_name;
+            });
 }
 
 bool EmulatorWindow::WinRTFrontendDialog::SetPatchEnabled(
@@ -3376,17 +3384,36 @@ void EmulatorWindow::WinRTFrontendDialog::DrawPluginManager() {
   } else if (!plugin_manager_title_id_.empty()) {
     title += std::string(" - ") + plugin_manager_title_id_;
   }
+  ImGui::PushStyleColor(ImGuiCol_WindowBg,
+                        ImVec4(0.03f, 0.07f, 0.04f, 1.0f));
   if (!ImGui::Begin(title.c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_HorizontalScrollbar)) {
     ImGui::End();
+    ImGui::PopStyleColor();
     return;
   }
 
   bool dirty = false;
+  std::string open_file;
+  bool file_open = true;
   int row_index = 0;
   for (auto& entry : plugin_manager_entries_) {
+    const std::string file_label = entry.file_path.filename().string();
+    if (file_label != open_file) {
+      open_file = file_label;
+      ImGui::Separator();
+      ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
+      file_open = ImGui::CollapsingHeader(
+          (file_label + "##grp" + std::to_string(row_index)).c_str());
+    }
+    if (!file_open) {
+      ++row_index;
+      continue;
+    }
     ImGui::PushID(row_index++);
+    ImGui::Bullet();
+    ImGui::SameLine();
     ImGui::TextWrapped("%s", entry.display_name.c_str());
     ImGui::SameLine(520.0f);
     if (entry.is_patch) {
@@ -3406,12 +3433,73 @@ void EmulatorWindow::WinRTFrontendDialog::DrawPluginManager() {
         dirty = true;
       }
     }
-    ImGui::Separator();
+    ImGui::PopID();
   }
   if (plugin_manager_entries_.empty()) {
-    ImGui::TextWrapped(
-        "Nothing installed for this title yet. Use Install Plugin to "
-        "download content, or install a file manually.");
+    ImGui::TextWrapped("Nothing installed for this title yet.");
+  }
+
+  ImGui::Spacing();
+  ImGui::Separator();
+  if (!plugin_list_fetched_) {
+    if (ImGui::Button("Check Online")) {
+      plugin_manager_error_.clear();
+      UWP::FetchPluginListForTitle(
+          plugin_manager_title_id_,
+          [this](std::vector<std::pair<std::string, std::string>> list) {
+            plugin_available_ = std::move(list);
+            plugin_list_fetched_ = true;
+          });
+    }
+  } else {
+    ImGui::Text("Available online:");
+    int avail_index = 0;
+    for (auto& item : plugin_available_) {
+      ImGui::PushID(100000 + avail_index++);
+      ImGui::TextWrapped("%s", item.first.c_str());
+      ImGui::SameLine(520.0f);
+      if (ImGui::Button("Install##install")) {
+        plugin_manager_error_.clear();
+        const std::string url = item.second;
+        const std::string filename = item.first;
+        const auto storage_root =
+            emulator_window_.emulator()->storage_root();
+        std::string lower = filename;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) {
+                         return static_cast<char>(std::tolower(c));
+                       });
+        const bool is_patch_file =
+            lower.size() >= 11 &&
+            lower.compare(lower.size() - 11, 11, ".patch.toml") == 0;
+        const auto dest_dir =
+            is_patch_file ? storage_root / "patches"
+                          : storage_root / "plugins" / plugin_manager_title_id_;
+        const std::string title_id = plugin_manager_title_id_;
+        UWP::DownloadPluginFile(
+            url, xe::path_to_utf8(dest_dir),
+            [this, title_id, is_patch_file](bool ok) {
+              if (!ok) {
+                plugin_manager_error_ =
+                    "Download failed. Check connection and retry.";
+                return;
+              }
+              if (is_patch_file) {
+                const auto patches_root =
+                    emulator_window_.emulator()->storage_root() / "patches";
+                EnablePatchesForTitle(patches_root, title_id);
+              }
+              RefreshPluginManagerEntries();
+            });
+      }
+      ImGui::PopID();
+    }
+    if (plugin_available_.empty()) {
+      ImGui::TextWrapped("The catalog has nothing for this title.");
+    }
+  }
+  if (!plugin_manager_error_.empty()) {
+    ImGui::TextWrapped("%s", plugin_manager_error_.c_str());
   }
 
   ImGui::Spacing();
@@ -3429,6 +3517,7 @@ void EmulatorWindow::WinRTFrontendDialog::DrawPluginManager() {
     RefreshPluginManagerEntries();
   }
   ImGui::End();
+  ImGui::PopStyleColor();
 }
 
 bool EmulatorWindow::WinRTFrontendDialog::EnablePatchesForTitle(
@@ -5917,7 +6006,12 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
           if (draw_game_context_option(FrontendText("Manage Plugins"))) {
             plugin_manager_title_id_ =
                 UWP::GetTitleIdFromPath(selected_game_path_);
-            plugin_manager_title_name_ = selected_game_name_;
+            plugin_manager_title_name_ =
+                selected_row ? get_game_display_title(*selected_row)
+                             : selected_game_name_;
+            plugin_available_.clear();
+            plugin_list_fetched_ = false;
+            plugin_manager_error_.clear();
             RefreshPluginManagerEntries();
             show_plugin_manager_ = true;
           }

@@ -935,6 +935,108 @@ void UWP::DownloadPatchesForGame(
   FetchAndDownloadForTitleIdAsync(api_url, title_id, dest_folder, callback);
 }
 
+const std::string kPluginCatalogApiUrl =
+    "https://api.github.com/repos/xenia-canary/game-patches/contents/"
+    "patches";
+
+static winrt::fire_and_forget FetchPluginListAsync(
+    std::string title_id,
+    std::function<void(std::vector<std::pair<std::string, std::string>>)>
+        callback) {
+  std::vector<std::pair<std::string, std::string>> entries;
+  try {
+    winrt::Windows::Web::Http::HttpClient client;
+    client.DefaultRequestHeaders().Append(L"User-Agent", L"xenia-uwp/1.0");
+    auto uri =
+        winrt::Windows::Foundation::Uri(winrt::to_hstring(kPluginCatalogApiUrl));
+    auto response = co_await client.GetAsync(uri);
+    response.EnsureSuccessStatusCode();
+    auto buffer = co_await response.Content().ReadAsBufferAsync();
+    auto reader =
+        winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer);
+    std::vector<uint8_t> buf(buffer.Length());
+    reader.ReadBytes(winrt::array_view<uint8_t>(buf));
+    std::string json(buf.begin(), buf.end());
+    auto parsed =
+        winrt::Windows::Data::Json::JsonValue::Parse(winrt::to_hstring(json));
+    if (parsed.ValueType() ==
+        winrt::Windows::Data::Json::JsonValueType::Array) {
+      for (const auto& item : parsed.GetArray()) {
+        if (item.ValueType() !=
+            winrt::Windows::Data::Json::JsonValueType::Object) {
+          continue;
+        }
+        auto obj = item.GetObject();
+        if (!obj.HasKey(L"name") || !obj.HasKey(L"download_url")) {
+          continue;
+        }
+        const std::string name =
+            winrt::to_string(obj.GetNamedString(L"name"));
+        if (name.size() < 8 ||
+            _strnicmp(name.c_str(), title_id.c_str(), 8) != 0) {
+          continue;
+        }
+        const std::string url =
+            winrt::to_string(obj.GetNamedString(L"download_url"));
+        if (!url.empty()) {
+          entries.emplace_back(name, url);
+        }
+      }
+    }
+  } catch (...) {
+  }
+  callback(std::move(entries));
+}
+
+static winrt::fire_and_forget DownloadOneFileAsync(
+    std::string url, std::string dest_folder,
+    std::function<void(bool)> callback) {
+  bool ok = false;
+  try {
+    winrt::Windows::Web::Http::HttpClient client;
+    std::filesystem::create_directories(dest_folder);
+    auto uri = winrt::Windows::Foundation::Uri(winrt::to_hstring(url));
+    auto response = co_await client.GetAsync(uri);
+    response.EnsureSuccessStatusCode();
+    auto buffer = co_await response.Content().ReadAsBufferAsync();
+    std::string fname = url.substr(url.rfind('/') + 1);
+    std::string decoded;
+    for (size_t j = 0; j < fname.size(); j++) {
+      if (fname[j] == '%' && j + 2 < fname.size()) {
+        char hex[3] = {fname[j + 1], fname[j + 2], 0};
+        decoded += (char)strtol(hex, nullptr, 16);
+        j += 2;
+      } else {
+        decoded += fname[j];
+      }
+    }
+    std::filesystem::path out = std::filesystem::path(dest_folder) / decoded;
+    auto reader =
+        winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer);
+    std::vector<uint8_t> data(buffer.Length());
+    reader.ReadBytes(winrt::array_view<uint8_t>(data));
+    std::ofstream ofs(out, std::ios::binary);
+    ofs.write(reinterpret_cast<const char*>(data.data()), data.size());
+    ofs.close();
+    ok = !ofs.fail();
+  } catch (...) {
+  }
+  callback(ok);
+}
+
+void UWP::FetchPluginListForTitle(
+    const std::string& title_id,
+    std::function<void(std::vector<std::pair<std::string, std::string>>)>
+        callback) {
+  FetchPluginListAsync(title_id, std::move(callback));
+}
+
+void UWP::DownloadPluginFile(const std::string& url,
+                             const std::string& dest_folder,
+                             std::function<void(bool)> callback) {
+  DownloadOneFileAsync(url, dest_folder, std::move(callback));
+}
+
 void UWP::DownloadPluginsForGame(
     const std::string& title_id, const std::string& dest_folder,
     std::function<void(bool, std::string)> callback) {
@@ -943,10 +1045,8 @@ void UWP::DownloadPluginsForGame(
   // contents API and the same title-id-in-filename convention). Patch
   // files are installed as patches at boot; other payloads keep the
   // plugin layout flow.
-  const std::string api_url =
-      "https://api.github.com/repos/xenia-canary/game-patches/contents/"
-      "patches";
-  FetchAndDownloadForTitleIdAsync(api_url, title_id, dest_folder, callback);
+  FetchAndDownloadForTitleIdAsync(kPluginCatalogApiUrl, title_id, dest_folder,
+                                  callback);
 }
 
 winrt::fire_and_forget DownloadConfigForGameAsync(

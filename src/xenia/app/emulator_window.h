@@ -405,6 +405,9 @@ class EmulatorWindow {
     std::string plugin_manager_title_id_;
     std::string plugin_manager_title_name_;
     std::vector<PluginManagerEntry> plugin_manager_entries_;
+    std::vector<std::pair<std::string, std::string>> plugin_available_;
+    bool plugin_list_fetched_ = false;
+    std::string plugin_manager_error_;
     std::unordered_map<std::string, std::shared_ptr<ui::ImmediateTexture>>
         game_image_textures_;
     bool show_search_panel_ = false;

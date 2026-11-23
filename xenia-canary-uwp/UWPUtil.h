@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace xe {
@@ -66,6 +67,12 @@ void DownloadPatchesForGame(const std::string& title_id,
 void DownloadPluginsForGame(const std::string& title_id,
                             const std::string& dest_folder,
                             std::function<void(bool, std::string)> callback);
+void FetchPluginListForTitle(
+    const std::string& title_id,
+    std::function<void(std::vector<std::pair<std::string, std::string>>)>
+        callback);
+void DownloadPluginFile(const std::string& url, const std::string& dest_folder,
+                        std::function<void(bool)> callback);
 void DownloadConfigForGame(const std::string& title_id,
                            const std::string& dest_folder,
                            std::function<void(bool, std::string)> callback);
