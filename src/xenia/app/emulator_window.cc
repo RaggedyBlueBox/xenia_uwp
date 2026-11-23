@@ -5834,112 +5834,13 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             std::string title_id =
                 UWP::GetTitleIdFromPath(selected_game_path_);
             if (!title_id.empty()) {
+              // Manual install only. Online content is handled per-file
+              // from Manage Plugins; nothing is bulk-downloaded here.
               std::filesystem::path title_plugins_dir =
                   plugins_root / title_id;
-              UWP::DownloadPluginsForGame(
-                  title_id, title_plugins_dir.string(),
-                  [this, open_manual_prompt, ensure_plugin_layout_for_title,
-                   title_id, title_plugins_dir,
-                   storage_root](bool ok, std::string msg) {
-                    if (ok) {
-                      // Patch files from the catalog install as patches:
-                      // move them where PatchDB reads them.
-                      bool any_patch = false;
-                      {
-                        std::error_code collect_ec;
-                        std::vector<std::filesystem::path> patch_files;
-                        for (const auto& entry :
-                             std::filesystem::directory_iterator(
-                                 title_plugins_dir, collect_ec)) {
-                          if (collect_ec) {
-                            break;
-                          }
-                          if (!entry.is_regular_file()) {
-                            continue;
-                          }
-                          std::string lower =
-                              entry.path().filename().string();
-                          std::transform(
-                              lower.begin(), lower.end(), lower.begin(),
-                              [](unsigned char c) {
-                                return static_cast<char>(std::tolower(c));
-                              });
-                          const std::string suffix = ".patch.toml";
-                          if (lower.size() >= suffix.size() &&
-                              lower.compare(lower.size() - suffix.size(),
-                                            suffix.size(), suffix) == 0) {
-                            patch_files.push_back(entry.path());
-                          }
-                        }
-                        if (!patch_files.empty()) {
-                          const auto patches_root =
-                              storage_root / "patches";
-                          std::error_code dir_ec;
-                          std::filesystem::create_directories(patches_root,
-                                                            dir_ec);
-                          for (const auto& patch_file : patch_files) {
-                            std::error_code move_ec;
-                            std::filesystem::rename(
-                                patch_file,
-                                patches_root / patch_file.filename(),
-                                move_ec);
-                            if (move_ec) {
-                              move_ec.clear();
-                              std::filesystem::copy_file(
-                                  patch_file,
-                                  patches_root / patch_file.filename(),
-                                  std::filesystem::copy_options::
-                                      overwrite_existing,
-                                  move_ec);
-                              move_ec.clear();
-                              std::error_code remove_ec;
-                              std::filesystem::remove(patch_file, remove_ec);
-                            }
-                          }
-                          any_patch = true;
-                        }
-                      }
-                      std::string layout_error;
-                      const bool layout_ok = any_patch ? true
-                                                     : ensure_plugin_layout_for_title(
-                                                           title_plugins_dir,
-                                                           title_id,
-                                                           selected_game_name_,
-                                                           &layout_error);
-                      if (layout_ok && !any_patch) {
-                        action_status_ = fmt::format(
-                            "Downloaded and installed plugins for {}.",
-                            title_id);
-                      } else if (layout_ok) {
-                        const auto patches_root = storage_root / "patches";
-                        const bool enabled = EnablePatchesForTitle(
-                            patches_root, title_id);
-                        action_status_ = enabled
-                                             ? fmt::format(
-                                                   "Downloaded and installed patches for {}.",
-                                                   title_id)
-                                             : fmt::format(
-                                                   "Downloaded patches for {}, but enabling failed.",
-                                                   title_id);
-                      } else {
-                        action_status_ = fmt::format(
-                            "Downloaded plugin files for {}, but install layout is incomplete.\n{}",
-                            title_id, layout_error);
-                      }
-                      action_popup_mode_ = ActionPopupMode::kInfo;
-                      pending_manual_kind_ = ManualInstallKind::kPlugin;
-                      pending_manual_destination_ = title_plugins_dir;
-                      pending_manual_title_id_ = title_id;
-                      action_popup_should_close_ = true;
-                      show_action_status_ = true;
-                    } else {
-                      open_manual_prompt(
-                          title_plugins_dir, ManualInstallKind::kPlugin,
-                          title_id,
-                          "No matching plugins were found online.\n"
-                          "Do you want to select a plugin manually?");
-                    }
-                  });
+              open_manual_prompt(
+                  title_plugins_dir, ManualInstallKind::kPlugin, title_id,
+                  "Select a plugin file to install manually.");
             } else {
               action_status_ = "Could not resolve title ID for plugin download.";
               action_popup_mode_ = ActionPopupMode::kInfo;
