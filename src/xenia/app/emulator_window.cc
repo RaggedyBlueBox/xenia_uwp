@@ -5502,16 +5502,88 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
               UWP::DownloadPluginsForGame(
                   title_id, title_plugins_dir.string(),
                   [this, open_manual_prompt, ensure_plugin_layout_for_title,
-                   title_id, title_plugins_dir](bool ok, std::string msg) {
+                   title_id, title_plugins_dir,
+                   storage_root](bool ok, std::string msg) {
                     if (ok) {
+                      // Patch files from the catalog install as patches:
+                      // move them where PatchDB reads them.
+                      bool any_patch = false;
+                      {
+                        std::error_code collect_ec;
+                        std::vector<std::filesystem::path> patch_files;
+                        for (const auto& entry :
+                             std::filesystem::directory_iterator(
+                                 title_plugins_dir, collect_ec)) {
+                          if (collect_ec) {
+                            break;
+                          }
+                          if (!entry.is_regular_file()) {
+                            continue;
+                          }
+                          std::string lower =
+                              entry.path().filename().string();
+                          std::transform(
+                              lower.begin(), lower.end(), lower.begin(),
+                              [](unsigned char c) {
+                                return static_cast<char>(std::tolower(c));
+                              });
+                          const std::string suffix = ".patch.toml";
+                          if (lower.size() >= suffix.size() &&
+                              lower.compare(lower.size() - suffix.size(),
+                                            suffix.size(), suffix) == 0) {
+                            patch_files.push_back(entry.path());
+                          }
+                        }
+                        if (!patch_files.empty()) {
+                          const auto patches_root =
+                              storage_root / "patches";
+                          std::error_code dir_ec;
+                          std::filesystem::create_directories(patches_root,
+                                                            dir_ec);
+                          for (const auto& patch_file : patch_files) {
+                            std::error_code move_ec;
+                            std::filesystem::rename(
+                                patch_file,
+                                patches_root / patch_file.filename(),
+                                move_ec);
+                            if (move_ec) {
+                              move_ec.clear();
+                              std::filesystem::copy_file(
+                                  patch_file,
+                                  patches_root / patch_file.filename(),
+                                  std::filesystem::copy_options::
+                                      overwrite_existing,
+                                  move_ec);
+                              move_ec.clear();
+                              std::error_code remove_ec;
+                              std::filesystem::remove(patch_file, remove_ec);
+                            }
+                          }
+                          any_patch = true;
+                        }
+                      }
                       std::string layout_error;
-                      const bool layout_ok = ensure_plugin_layout_for_title(
-                          title_plugins_dir, title_id, selected_game_name_,
-                          &layout_error);
-                      if (layout_ok) {
+                      const bool layout_ok = any_patch ? true
+                                                     : ensure_plugin_layout_for_title(
+                                                           title_plugins_dir,
+                                                           title_id,
+                                                           selected_game_name_,
+                                                           &layout_error);
+                      if (layout_ok && !any_patch) {
                         action_status_ = fmt::format(
                             "Downloaded and installed plugins for {}.",
                             title_id);
+                      } else if (layout_ok) {
+                        const auto patches_root = storage_root / "patches";
+                        const bool enabled = EnablePatchesForTitle(
+                            patches_root, title_id);
+                        action_status_ = enabled
+                                             ? fmt::format(
+                                                   "Downloaded and installed patches for {}.",
+                                                   title_id)
+                                             : fmt::format(
+                                                   "Downloaded patches for {}, but enabling failed.",
+                                                   title_id);
                       } else {
                         action_status_ = fmt::format(
                             "Downloaded plugin files for {}, but install layout is incomplete.\n{}",

@@ -938,11 +938,14 @@ void UWP::DownloadPatchesForGame(
 void UWP::DownloadPluginsForGame(
     const std::string& title_id, const std::string& dest_folder,
     std::function<void(bool, std::string)> callback) {
-  // Plugins repo: RaggedyBlueBox/game-plugins (same naming convention).
-  // The old xenia-canary/game-plugins catalog was deleted upstream.
+  // The standalone game-plugins catalog was deleted upstream, so the
+  // plugin browser is backed by the game-patches repo (same GitHub
+  // contents API and the same title-id-in-filename convention). Patch
+  // files are installed as patches at boot; other payloads keep the
+  // plugin layout flow.
   const std::string api_url =
-      "https://api.github.com/repos/RaggedyBlueBox/game-plugins/contents/"
-      "plugins";
+      "https://api.github.com/repos/xenia-canary/game-patches/contents/"
+      "patches";
   FetchAndDownloadForTitleIdAsync(api_url, title_id, dest_folder, callback);
 }
 
