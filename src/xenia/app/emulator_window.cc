@@ -3128,6 +3128,309 @@ void EmulatorWindow::AddRecentlyLaunchedTitle(
 }
 
 #if XE_PLATFORM_WINRT
+void EmulatorWindow::WinRTFrontendDialog::RefreshPluginManagerEntries() {
+  plugin_manager_entries_.clear();
+  const std::string& title_id = plugin_manager_title_id_;
+  if (title_id.empty()) {
+    return;
+  }
+  std::string upper_title = title_id;
+  std::transform(upper_title.begin(), upper_title.end(), upper_title.begin(),
+                 [](unsigned char c) {
+                   return static_cast<char>(std::toupper(c));
+                 });
+
+  const auto storage_root = emulator_window_.emulator()->storage_root();
+
+  const auto patches_root = storage_root / "patches";
+  std::error_code iter_ec;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(patches_root, iter_ec)) {
+    if (iter_ec) {
+      break;
+    }
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const std::string filename = entry.path().filename().string();
+    if (filename.size() < 8) {
+      continue;
+    }
+    std::string file_title = filename.substr(0, 8);
+    std::transform(file_title.begin(), file_title.end(), file_title.begin(),
+                   [](unsigned char c) {
+                     return static_cast<char>(std::toupper(c));
+                   });
+    if (file_title != upper_title) {
+      continue;
+    }
+    try {
+      auto table = ParseFile(entry.path());
+      auto patch_array = table.get_as<toml::array>("patch");
+      if (!patch_array) {
+        continue;
+      }
+      for (auto& patch_node : *patch_array) {
+        auto* patch_table = patch_node.as_table();
+        if (!patch_table) {
+          continue;
+        }
+        std::string patch_name;
+        if (auto it = patch_table->find("name"); it != patch_table->end()) {
+          if (auto str = it->second.as_string()) {
+            patch_name = std::string(str->get());
+          }
+        }
+        if (patch_name.empty()) {
+          continue;
+        }
+        bool enabled = true;
+        if (auto it = patch_table->find("is_enabled");
+            it != patch_table->end()) {
+          if (auto flag = it->second.as_boolean()) {
+            enabled = flag->get();
+          }
+        }
+        PluginManagerEntry row;
+        row.is_patch = true;
+        row.file_path = entry.path();
+        row.display_name = patch_name;
+        row.enabled = enabled;
+        plugin_manager_entries_.push_back(std::move(row));
+      }
+    } catch (const std::exception&) {
+    } catch (...) {
+    }
+  }
+
+  const auto title_plugins_dir =
+      storage_root / "plugins" / plugin_manager_title_id_;
+  std::error_code plugin_ec;
+  for (const auto& entry : std::filesystem::directory_iterator(
+           title_plugins_dir, plugin_ec)) {
+    if (plugin_ec) {
+      break;
+    }
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const std::string filename = entry.path().filename().string();
+    if (filename == "plugins.toml") {
+      continue;
+    }
+    PluginManagerEntry row;
+    row.is_patch = false;
+    row.file_path = entry.path();
+    row.display_name = filename;
+    row.enabled = true;
+    plugin_manager_entries_.push_back(std::move(row));
+  }
+}
+
+bool EmulatorWindow::WinRTFrontendDialog::SetPatchEnabled(
+    const std::filesystem::path& file, const std::string& patch_name,
+    bool enable) {
+  std::ifstream ifs(file, std::ios::binary);
+  if (!ifs) {
+    return false;
+  }
+  std::string text((std::istreambuf_iterator<char>(ifs)),
+                   std::istreambuf_iterator<char>());
+  ifs.close();
+
+  auto trim_quotes = [](const std::string& value) {
+    size_t end = value.size();
+    while (end > 0 &&
+           (value[end - 1] == ' ' || value[end - 1] == '\t')) {
+      --end;
+    }
+    std::string trimmed = value.substr(0, end);
+    if (trimmed.size() >= 2 &&
+        ((trimmed.front() == '"' && trimmed.back() == '"') ||
+         (trimmed.front() == '\'' && trimmed.back() == '\''))) {
+      return trimmed.substr(1, trimmed.size() - 2);
+    }
+    return trimmed;
+  };
+
+  std::vector<size_t> line_starts;
+  line_starts.push_back(0);
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '\n') {
+      line_starts.push_back(i + 1);
+    }
+  }
+
+  auto line_text = [&](size_t line) {
+    size_t begin = line_starts[line];
+    size_t end = text.find('\n', begin);
+    if (end == std::string::npos) {
+      end = text.size();
+    }
+    std::string out = text.substr(begin, end - begin);
+    if (!out.empty() && out.back() == '\r') {
+      out.pop_back();
+    }
+    return out;
+  };
+
+  auto stripped = [](const std::string& line) {
+    size_t i = 0;
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) {
+      ++i;
+    }
+    return line.substr(i);
+  };
+
+  const size_t line_count = line_starts.size();
+  bool found = false;
+  for (size_t i = 0; i < line_count && !found; ++i) {
+    if (stripped(line_text(i)).rfind("[[patch]]", 0) != 0) {
+      continue;
+    }
+    size_t block_end = line_count;
+    for (size_t j = i + 1; j < line_count; ++j) {
+      std::string inner = stripped(line_text(j));
+      if (!inner.empty() && inner.front() == '[') {
+        block_end = j;
+        break;
+      }
+    }
+    size_t name_line = line_count;
+    for (size_t j = i; j < block_end; ++j) {
+      std::string inner = stripped(line_text(j));
+      if (inner.rfind("name", 0) == 0) {
+        size_t eq = inner.find('=');
+        if (eq != std::string::npos) {
+          std::string value = inner.substr(eq + 1);
+          size_t lead = 0;
+          while (lead < value.size() &&
+                 (value[lead] == ' ' || value[lead] == '\t')) {
+            ++lead;
+          }
+          if (trim_quotes(value.substr(lead)) == patch_name) {
+            name_line = j;
+            break;
+          }
+        }
+      }
+    }
+    if (name_line == line_count) {
+      continue;
+    }
+    found = true;
+    const std::string wanted = enable ? "true" : "false";
+    bool wrote = false;
+    for (size_t j = i; j < block_end; ++j) {
+      std::string inner = stripped(line_text(j));
+      if (inner.rfind("is_enabled", 0) == 0 &&
+          inner.find('=') != std::string::npos) {
+        size_t begin = line_starts[j];
+        size_t end = text.find('\n', begin);
+        if (end == std::string::npos) {
+          end = text.size();
+        }
+        size_t indent = 0;
+        while (begin + indent < text.size() &&
+               (text[begin + indent] == ' ' ||
+                text[begin + indent] == '\t')) {
+          ++indent;
+        }
+        std::string replacement =
+            text.substr(begin, indent) + "is_enabled = " + wanted;
+        text.replace(begin, end - begin, replacement);
+        wrote = true;
+        break;
+      }
+    }
+    if (!wrote) {
+      size_t begin = line_starts[name_line];
+      size_t end = text.find('\n', begin);
+      if (end == std::string::npos) {
+        text += "\nis_enabled = " + wanted + "\n";
+      } else {
+        text.insert(end + 1, "is_enabled = " + wanted + "\n");
+      }
+    }
+  }
+  if (!found) {
+    return false;
+  }
+
+  std::ofstream ofs(file, std::ios::binary | std::ios::trunc);
+  if (!ofs) {
+    return false;
+  }
+  ofs.write(text.data(), static_cast<std::streamsize>(text.size()));
+  ofs.close();
+  return !ofs.fail();
+}
+
+void EmulatorWindow::WinRTFrontendDialog::DrawPluginManager() {
+  ImGui::SetNextWindowPos(ImVec2(320, 120), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(1280, 800), ImGuiCond_FirstUseEver);
+  bool dialog_open = true;
+  std::string title = "Manage Plugins";
+  if (!plugin_manager_title_name_.empty()) {
+    title += std::string(" - ") + plugin_manager_title_name_;
+  } else if (!plugin_manager_title_id_.empty()) {
+    title += std::string(" - ") + plugin_manager_title_id_;
+  }
+  if (!ImGui::Begin(title.c_str(), &dialog_open,
+                    ImGuiWindowFlags_NoCollapse |
+                        ImGuiWindowFlags_HorizontalScrollbar)) {
+    ImGui::End();
+    return;
+  }
+
+  bool dirty = false;
+  int row_index = 0;
+  for (auto& entry : plugin_manager_entries_) {
+    ImGui::PushID(row_index++);
+    ImGui::TextWrapped("%s", entry.display_name.c_str());
+    ImGui::SameLine(520.0f);
+    if (entry.is_patch) {
+      const std::string toggle_label =
+          entry.enabled ? "Disable##toggle" : "Enable##toggle";
+      if (ImGui::Button(toggle_label.c_str())) {
+        if (SetPatchEnabled(entry.file_path, entry.display_name,
+                            !entry.enabled)) {
+          entry.enabled = !entry.enabled;
+        }
+      }
+      ImGui::SameLine();
+    }
+    if (ImGui::Button("Delete##delete")) {
+      std::error_code ec;
+      if (std::filesystem::remove(entry.file_path, ec) && !ec) {
+        dirty = true;
+      }
+    }
+    ImGui::Separator();
+  }
+  if (plugin_manager_entries_.empty()) {
+    ImGui::TextWrapped(
+        "Nothing installed for this title yet. Use Install Plugin to "
+        "download content, or install a file manually.");
+  }
+
+  ImGui::Spacing();
+  if (ImGui::Button("Back")) {
+    dialog_open = false;
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) ||
+      ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    dialog_open = false;
+  }
+
+  if (!dialog_open) {
+    show_plugin_manager_ = false;
+  } else if (dirty) {
+    RefreshPluginManagerEntries();
+  }
+  ImGui::End();
+}
+
 bool EmulatorWindow::WinRTFrontendDialog::EnablePatchesForTitle(
     const std::filesystem::path& patches_dir,
     const std::string& title_id) {
@@ -4255,7 +4558,8 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         // gamepad shortcuts while a dialog/popup/editor is open.
         const bool is_any_game_context_open =
             is_any_popup_open || show_game_context_menu_ ||
-            show_per_game_config_editor_ || show_action_status_;
+            show_per_game_config_editor_ || show_plugin_manager_ ||
+            show_action_status_;
 
         if (controller_b_pressed && !is_any_game_context_open) {
           ImGui::SetWindowFocus("##gamelist_left");
@@ -5610,6 +5914,14 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             }
           }
 
+          if (draw_game_context_option(FrontendText("Manage Plugins"))) {
+            plugin_manager_title_id_ =
+                UWP::GetTitleIdFromPath(selected_game_path_);
+            plugin_manager_title_name_ = selected_game_name_;
+            RefreshPluginManagerEntries();
+            show_plugin_manager_ = true;
+          }
+
           if (draw_game_context_option(FrontendText("Manage DLC"))) {
             std::string title_id =
                 UWP::GetTitleIdFromPath(selected_game_path_);
@@ -6078,6 +6390,10 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
                                     footer_select_icon_offset);
 
           ImGui::EndPopup();
+        }
+
+        if (show_plugin_manager_) {
+          DrawPluginManager();
         }
 
         if (show_per_game_config_editor_) {

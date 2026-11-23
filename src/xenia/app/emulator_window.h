@@ -335,6 +335,16 @@ class EmulatorWindow {
 
     bool EnablePatchesForTitle(const std::filesystem::path& patches_dir,
                                const std::string& title_id);
+    struct PluginManagerEntry {
+      bool is_patch = false;
+      std::filesystem::path file_path;
+      std::string display_name;
+      bool enabled = true;
+    };
+    void RefreshPluginManagerEntries();
+    void DrawPluginManager();
+    static bool SetPatchEnabled(const std::filesystem::path& file,
+                                const std::string& patch_name, bool enable);
     void DrawNoProfilePrompt(ImGuiIO& io);
 
     std::shared_ptr<ui::ImmediateTexture> GetOrCreateBackground();
@@ -391,6 +401,10 @@ class EmulatorWindow {
     char per_game_config_buffer_[65536] = {};
     char cl_buffer_[128] = {};
     std::unordered_map<std::string, std::string> cached_game_title_ids_;
+    bool show_plugin_manager_ = false;
+    std::string plugin_manager_title_id_;
+    std::string plugin_manager_title_name_;
+    std::vector<PluginManagerEntry> plugin_manager_entries_;
     std::unordered_map<std::string, std::shared_ptr<ui::ImmediateTexture>>
         game_image_textures_;
     bool show_search_panel_ = false;
