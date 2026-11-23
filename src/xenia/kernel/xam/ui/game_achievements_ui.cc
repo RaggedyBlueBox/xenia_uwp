@@ -216,12 +216,16 @@ void GameAchievementsUI::OnDraw(ImGuiIO& io) {
 
   // Controller navigation: D-pad scrolls long lists, B/Esc closes.
   // Without these the dialog traps gamepad users (no scroll region or
-  // close binding existed before).
+  // close binding existed before). The title-bar X needs a cursor, so an
+  // explicit Close button is provided for controller users.
   if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp, true)) {
     ImGui::SetScrollY(ImGui::GetScrollY() - 60.0f);
   }
   if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown, true)) {
     ImGui::SetScrollY(ImGui::GetScrollY() + 60.0f);
+  }
+  if (ImGui::Button("Close")) {
+    dialog_open = false;
   }
   if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) ||
       ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
