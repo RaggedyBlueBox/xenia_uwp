@@ -98,6 +98,8 @@ void XamModule::LoadLoaderData() {
   std::filesystem::remove(kXamModuleLoaderDataFileName);
 }
 
+void XamModule::ClearLoaderData() { loader_data_ = LoaderData{}; }
+
 void XamModule::SaveLoaderData() {
   FILE* file = xe::filesystem::OpenFile(kXamModuleLoaderDataFileName, "wb");
 

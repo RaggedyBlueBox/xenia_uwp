@@ -41,6 +41,7 @@ class XamModule : public KernelModule {
 
   void LoadLoaderData();
   void SaveLoaderData();
+  void ClearLoaderData();
 
   const LoaderData& loader_data() const { return loader_data_; }
   LoaderData& loader_data() { return loader_data_; }

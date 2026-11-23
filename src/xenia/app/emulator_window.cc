@@ -3233,6 +3233,14 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
   if (UWP::HasGamePath()) {
     UWP::SelectGameFromWinRT(emulator_window_.emulator());
     Close();
+  } else {
+    // Headless title launch (Xbox Device Portal): launch_data.bin was
+    // consumed at kernel init; boot its host path exactly once.
+    std::string loader_path =
+        UWP::TakeLoaderHostPath(emulator_window_.emulator());
+    if (!loader_path.empty()) {
+      UWP::SetAutomaticLaunch(loader_path);
+    }
   }
 
   float display_scale = ((float)io.DisplaySize.x / 1920.0f);

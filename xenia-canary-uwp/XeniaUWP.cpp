@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstddef>
 #include <fstream>
+#include <optional>
 
 #include "windowed_app_context_uwp.h"
 #include "surface_uwp.h"
@@ -29,6 +31,9 @@
 #include "xenia/config.h"
 #include "xenia/base/main_win.h"
 #include "xenia/vfs/devices/disc_zarchive_device.h"
+#include "xenia/xbox.h"
+#include "xenia/kernel/util/xex2_info.h"
+#include "xenia/kernel/xam/xcontent/xcontent.h"
 
 using namespace xe;
 using namespace xe::hid;
@@ -82,6 +87,55 @@ bool AddGameEntry(const std::filesystem::path& path, const std::string& name) {
 
   s_games.push_back({xe::path_to_utf8(path), name});
   return true;
+}
+
+// STFS packages that are not games (profiles, saves, caches, title updates)
+// must not appear in the library. Mirrors the desktop content browser and
+// the Netplay fork scanner.
+bool IsBootableContentType(xe::XContentType type) {
+  return type == xe::XContentType::kXbox360Title ||
+         type == xe::XContentType::kInstalledGame ||
+         type == xe::XContentType::kArcadeTitle ||
+         type == xe::XContentType::kGameDemo;
+}
+
+std::optional<xe::XContentType> ReadPackageContentType(
+    const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    return std::nullopt;
+  }
+  constexpr std::streamoff type_offset =
+      static_cast<std::streamoff>(offsetof(
+          xe::kernel::xam::XContentContainerHeader, content_metadata)) +
+      static_cast<std::streamoff>(
+          offsetof(xe::kernel::xam::XContentMetadata, content_type));
+  xe::be<xe::XContentType> type{};
+  file.seekg(type_offset);
+  if (!file.read(reinterpret_cast<char*>(&type), sizeof(type))) {
+    return std::nullopt;
+  }
+  return static_cast<xe::XContentType>(type);
+}
+
+// Title-update and DLC executables are patch/dll modules, not bootable games.
+bool IsTitleExecutable(const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    return false;
+  }
+  xe::be<uint32_t> stored_flags{};
+  file.seekg(4);
+  if (!file.read(reinterpret_cast<char*>(&stored_flags),
+                 sizeof(stored_flags))) {
+    return false;
+  }
+  const uint32_t flags = static_cast<uint32_t>(stored_flags);
+  constexpr uint32_t excluded = xe::XEX_MODULE_DLL_MODULE |
+                                xe::XEX_MODULE_MODULE_PATCH |
+                                xe::XEX_MODULE_PATCH_FULL |
+                                xe::XEX_MODULE_PATCH_DELTA;
+  return (flags & xe::XEX_MODULE_TITLE) != 0 && (flags & excluded) == 0;
 }
 
 enum class AnalogNavDirection { kLeft = 0, kRight, kUp, kDown };
@@ -323,18 +377,23 @@ void RecurseFolderForGames(std::string path) {
           if (lowercase_name == "default.xex") {
             default_xex = game_path;
             default_xex_name = xe::path_to_utf8(directory.filename());
-          } else {
+          } else if (IsTitleExecutable(game_path)) {
             // Some standalone XEX titles don't use the default.xex name.
             // Only list those when this directory has no default.xex.
+            // Patch/dll modules (title updates) are not bootable games.
             other_xex_files.emplace_back(game_path, title_name);
           }
           break;
         }
         case xe::Emulator::FileSignatureType::CON:
         case xe::Emulator::FileSignatureType::PIRS:
-        case xe::Emulator::FileSignatureType::ZAR:
-          content_packages.emplace_back(game_path, title_name);
+        case xe::Emulator::FileSignatureType::ZAR: {
+          const auto content_type = ReadPackageContentType(game_path);
+          if (!content_type || IsBootableContentType(*content_type)) {
+            content_packages.emplace_back(game_path, title_name);
+          }
           break;
+        }
         case xe::Emulator::FileSignatureType::LIVE: {
           std::ifstream file(game_path, std::ios::binary);
           std::string title;
@@ -357,8 +416,11 @@ void RecurseFolderForGames(std::string path) {
                            : '?';
             }
           }
-          content_packages.emplace_back(
-              game_path, title.empty() ? title_name : title);
+          const auto content_type = ReadPackageContentType(game_path);
+          if (!content_type || IsBootableContentType(*content_type)) {
+            content_packages.emplace_back(
+                game_path, title.empty() ? title_name : title);
+          }
           break;
         }
         case xe::Emulator::FileSignatureType::XISO:

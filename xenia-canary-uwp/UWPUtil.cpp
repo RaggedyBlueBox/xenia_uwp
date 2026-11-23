@@ -5,6 +5,8 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/util/xex2_info.h"
+#include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/xam/xam_module.h"
 #include "xenia/vfs/devices/disc_image_device.h"
 #include "xenia/vfs/entry.h"
 #include "xenia/vfs/file.h"
@@ -224,6 +226,28 @@ std::string GetLocalState() {
 int GetCoreDPI() { return m_DPI; }
 
 void SetAutomaticLaunch(std::string game_path) { m_game_path = game_path; }
+
+std::string TakeLoaderHostPath(xe::Emulator* emu) {
+  if (!emu || !emu->kernel_state()) {
+    return {};
+  }
+  auto xam = emu->kernel_state()
+                 ->GetKernelModule<xe::kernel::xam::XamModule>("xam.xex");
+  if (!xam) {
+    return {};
+  }
+  std::string host_path = xam->loader_data().host_path;
+  // One-shot: a stale path must not reboot the title every time the menu opens.
+  xam->ClearLoaderData();
+  if (host_path.empty()) {
+    return {};
+  }
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(xe::to_path(host_path), ec)) {
+    return {};
+  }
+  return host_path;
+}
 void SetDPI(int DPI) { m_DPI = DPI; }
 bool IsUIOpen() { return m_ui_open; }
 void SetUIOpen(bool is_open) { m_ui_open = is_open; }

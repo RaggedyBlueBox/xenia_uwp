@@ -47,6 +47,9 @@ std::string GetLocalCache();
 std::string GetLocalState();
 int GetCoreDPI();
 void SetAutomaticLaunch(std::string game_path);
+// One-shot headless boot: returns launch_data.bin's host path once, then
+// clears it so returning to the menu never relaunches the title.
+std::string TakeLoaderHostPath(xe::Emulator* emu);
 void SetDPI(int DPI);
 bool IsUIOpen();
 void SetUIOpen(bool is_open);
