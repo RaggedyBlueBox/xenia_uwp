@@ -28,6 +28,9 @@
 
 DEFINE_bool(protect_zero, true, "Protect the zero page from reads and writes.",
             "Memory");
+DEFINE_bool(uwp_reclaim_guest_virtual_memory, false,
+            "Allow Windows to reclaim decommitted non-aliased guest memory.",
+            "Memory");
 DEFINE_bool(emit_inline_mmio_checks, false,
             "Emit inline MMIO range checks for all I32 loads/stores instead "
             "of relying on exception-based MMIO detection.",
@@ -370,11 +373,23 @@ int Memory::MapViews(uint8_t* mapping_base) {
   // side if system allocation granularity is bigger than 4 KB.
   uint64_t granularity_mask = ~uint64_t(system_allocation_granularity_ - 1);
   for (size_t n = 0; n < xe::countof(map_info); n++) {
-    views_.all_views[n] = reinterpret_cast<uint8_t*>(xe::memory::MapFileView(
-        mapping_, mapping_base + map_info[n].virtual_address_start,
-        map_info[n].virtual_address_end - map_info[n].virtual_address_start + 1,
-        xe::memory::PageAccess::kReadWrite,
-        map_info[n].target_address & granularity_mask));
+    size_t length = map_info[n].virtual_address_end -
+                    map_info[n].virtual_address_start + 1;
+    bool private_view = false;
+#if XE_PLATFORM_WIN32
+    private_view = cvars::uwp_reclaim_guest_virtual_memory && n < 2;
+#endif
+    if (private_view) {
+      views_.all_views[n] = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
+          mapping_base + map_info[n].virtual_address_start, length,
+          xe::memory::AllocationType::kReserve,
+          xe::memory::PageAccess::kReadWrite));
+    } else {
+      views_.all_views[n] = reinterpret_cast<uint8_t*>(xe::memory::MapFileView(
+          mapping_, mapping_base + map_info[n].virtual_address_start, length,
+          xe::memory::PageAccess::kReadWrite,
+          map_info[n].target_address & granularity_mask));
+    }
     if (!views_.all_views[n]) {
       // Failed, so bail and try again.
       UnmapViews();
@@ -389,7 +404,17 @@ void Memory::UnmapViews() {
     if (views_.all_views[n]) {
       size_t length = map_info[n].virtual_address_end -
                       map_info[n].virtual_address_start + 1;
-      xe::memory::UnmapFileView(mapping_, views_.all_views[n], length);
+      bool private_view = false;
+#if XE_PLATFORM_WIN32
+      private_view = cvars::uwp_reclaim_guest_virtual_memory && n < 2;
+#endif
+      if (private_view) {
+        xe::memory::DeallocFixed(views_.all_views[n], 0,
+                                 xe::memory::DeallocationType::kRelease);
+      } else {
+        xe::memory::UnmapFileView(mapping_, views_.all_views[n], length);
+      }
+      views_.all_views[n] = nullptr;
     }
   }
 }
@@ -834,6 +859,14 @@ void BaseHeap::Initialize(Memory* memory, uint8_t* membase, HeapType heap_type,
 }
 
 void BaseHeap::Dispose() {
+#if XE_PLATFORM_WIN32
+  if (cvars::uwp_reclaim_guest_virtual_memory &&
+      heap_type_ == HeapType::kGuestVirtual) {
+    // The entire reserved range is released by Memory::UnmapViews.
+    free_blocks_.clear();
+    return;
+  }
+#endif
   // Walk table and release all regions.
   for (uint32_t page_number = 0; page_number < page_table_.size();
        ++page_number) {
@@ -1390,6 +1423,17 @@ bool BaseHeap::Decommit(uint32_t address, uint32_t size) {
 
   auto global_lock = global_critical_region_.Acquire();
 
+#if XE_PLATFORM_WIN32
+  if (cvars::uwp_reclaim_guest_virtual_memory &&
+      heap_type_ == HeapType::kGuestVirtual &&
+      !xe::memory::DeallocFixed(TranslateRelative(start_page_number * page_size_),
+                                (end_page_number - start_page_number + 1) * page_size_,
+                                xe::memory::DeallocationType::kDecommit)) {
+    XELOGE("Failed to decommit private guest memory");
+    return false;
+  }
+#endif
+
   // Release from host.
   // TODO(benvanik): find a way to actually decommit memory;
   //     mapped memory cannot be decommitted.
@@ -1430,6 +1474,19 @@ bool BaseHeap::Release(uint32_t base_address, uint32_t* out_region_size) {
   if (out_region_size) {
     *out_region_size = (base_page_entry.region_page_count * page_size_);
   }
+
+#if XE_PLATFORM_WIN32
+  if (cvars::uwp_reclaim_guest_virtual_memory &&
+      heap_type_ == HeapType::kGuestVirtual &&
+      base_page_entry.region_page_count &&
+      !xe::memory::DeallocFixed(
+          TranslateRelative(base_page_number * page_size_),
+          base_page_entry.region_page_count * page_size_,
+          xe::memory::DeallocationType::kDecommit)) {
+    XELOGE("Failed to reclaim released private guest memory");
+    return false;
+  }
+#endif
 
   // Release from host not needed as mapping reserves the range for us.
   // TODO(benvanik): protect with NOACCESS?
