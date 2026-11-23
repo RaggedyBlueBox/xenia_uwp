@@ -11,8 +11,13 @@
 > [#1](https://github.com/RaggedyBlueBox/xenia_uwp/issues/1) for the
 > running engineering log.
 
-**Status: Minecraft Xbox 360 Edition loads and plays.** Skate 3 and
-Need for Speed Most Wanted are in the library alongside it.
+**Status: Minecraft Xbox 360 Edition loads and plays.** The library
+currently holds:
+
+- **Minecraft Xbox 360 Edition** — boots, loads worlds, TU75 applies.
+- **Need for Speed Most Wanted (2005)** — installed with English assets,
+  in the library with full art.
+- **Skate 3** — imported from disc, in the library with full art.
 
 ![Game library on Xbox](docs/screenshots/library.png)
 
