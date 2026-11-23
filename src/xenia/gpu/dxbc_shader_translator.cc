@@ -20,10 +20,12 @@
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/graphics_provider.h"
 
-DEFINE_bool(dxbc_structured_forward_jumps, true,
+DEFINE_bool(dxbc_structured_forward_jumps, false,
             "Translate forward jumps as structured ifs instead of continuing "
             "the main loop. Works around drivers crashing on big shaders with "
-            "jumps (GTA IV on Xbox Series). Only without dxbc_switch.",
+            "jumps (GTA IV on Xbox Series). Only without dxbc_switch. "
+            "Verified to blank all rendering on Series S devkits: keep off "
+            "there unless testing a specific title.",
             "GPU");
 
 // The test case for AMD is 4D5307E6 (checked in 2018).
