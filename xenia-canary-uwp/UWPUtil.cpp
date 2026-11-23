@@ -242,8 +242,11 @@ std::string TakeLoaderHostPath(xe::Emulator* emu) {
   if (host_path.empty()) {
     return {};
   }
+  XELOGI("UWP: loader host path '{}'", host_path);
   std::error_code ec;
   if (!std::filesystem::is_regular_file(xe::to_path(host_path), ec)) {
+    XELOGW("UWP: loader host path not a file: {} ({})", host_path,
+           ec ? ec.message() : "not a regular file");
     return {};
   }
   return host_path;

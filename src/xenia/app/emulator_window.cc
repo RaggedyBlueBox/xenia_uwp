@@ -3239,6 +3239,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
     std::string loader_path =
         UWP::TakeLoaderHostPath(emulator_window_.emulator());
     if (!loader_path.empty()) {
+      XELOGI("UWP: headless boot of '{}'", loader_path);
       UWP::SetAutomaticLaunch(loader_path);
     }
   }
