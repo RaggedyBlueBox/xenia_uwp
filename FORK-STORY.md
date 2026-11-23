@@ -7,7 +7,7 @@ this repo was built that way — on a Series S devkit, tested on my TV,
 one crash at a time.
 
 I wanted my Xbox 360 games running on my own console, on my own terms.
-Minecraft Xbox 360 Edition. Skate 3. No streaming, no storefront telling
+Minecraft Xbox 360 Edition. No streaming, no storefront telling
 me what's still allowed to run — just the box I own, playing the games
 I own, through an emulator I can read.
 
@@ -53,7 +53,6 @@ from actually using it on the couch and fixing whatever annoyed me next.
 - Boots and runs on a Series S devkit as a UWP package.
 - Gets Minecraft past the crash that killed every world load.
 - A library view that shows your games instead of every system file.
-- NFS Most Wanted and Skate 3 alongside it.
 
 It is experimental. I broke things more than once getting here, and the
 commit history shows it.
