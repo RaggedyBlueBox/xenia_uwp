@@ -30,7 +30,7 @@
 
 DECLARE_bool(record_mmio_access_exceptions);
 
-DEFINE_int64(max_stackpoints, 65536,
+DEFINE_int64(max_stackpoints, XE_PLATFORM_WINRT ? 16384 : 65536,
              "Max number of host->guest stack mappings we can record.", "x64");
 
 DEFINE_bool(enable_host_guest_stack_synchronization, false,

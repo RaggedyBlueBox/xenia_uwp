@@ -28,7 +28,7 @@
 
 DEFINE_bool(protect_zero, true, "Protect the zero page from reads and writes.",
             "Memory");
-DEFINE_bool(uwp_reclaim_guest_virtual_memory, false,
+DEFINE_bool(uwp_reclaim_guest_virtual_memory, XE_PLATFORM_WINRT ? true : false,
             "Allow Windows to reclaim decommitted non-aliased guest memory.",
             "Memory");
 DEFINE_bool(emit_inline_mmio_checks, false,

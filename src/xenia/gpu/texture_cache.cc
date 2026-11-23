@@ -37,7 +37,7 @@ DEFINE_int32(
     "See draw_resolution_scale_x for more information.",
     "GPU");
 DEFINE_uint32(
-    texture_cache_memory_limit_soft, 384,
+    texture_cache_memory_limit_soft, XE_PLATFORM_WINRT ? 256 : 384,
     "Maximum host texture memory usage (in megabytes) above which old textures "
     "will be destroyed.",
     "GPU.Debug");
@@ -47,12 +47,12 @@ DEFINE_uint32(
     "deleted if texture memory usage exceeds texture_cache_memory_limit_soft.",
     "GPU.Debug");
 DEFINE_uint32(
-    texture_cache_memory_limit_hard, 768,
+    texture_cache_memory_limit_hard, XE_PLATFORM_WINRT ? 384 : 768,
     "Maximum host texture memory usage (in megabytes) above which textures "
     "will be destroyed as soon as possible.",
     "GPU.Debug");
 DEFINE_uint32(
-    texture_cache_memory_limit_render_to_texture, 24,
+    texture_cache_memory_limit_render_to_texture, XE_PLATFORM_WINRT ? 16 : 24,
     "Part of the host texture memory budget (in megabytes) that will be scaled "
     "by the current drawing resolution scale.\n"
     "If texture_cache_memory_limit_soft, for instance, is 384, and this is 24, "
@@ -61,7 +61,7 @@ DEFINE_uint32(
     "textures - so with 2x2 resolution scaling, the soft limit will be 360 + "
     "96 MB, and with 3x3, it will be 360 + 216 MB.",
     "GPU.Debug");
-DEFINE_bool(tiled_shared_memory, true,
+DEFINE_bool(tiled_shared_memory, XE_PLATFORM_WINRT ? false : true,
             "Enable tiled/sparse resources for efficient large address space "
             "support. Disable for graphics debugger compatibility.",
             "GPU.Debug");

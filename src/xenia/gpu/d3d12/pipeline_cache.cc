@@ -48,7 +48,7 @@ DEFINE_bool(
     "https://github.com/microsoft/DirectXShaderCompiler/releases are present.",
     "D3D12");
 DEFINE_int32(
-    d3d12_pipeline_creation_threads, -1,
+    d3d12_pipeline_creation_threads, XE_PLATFORM_WINRT ? 4 : -1,
     "Number of threads used for graphics pipeline creation. -1 to calculate "
     "automatically (75% of logical CPU cores), a positive number to specify "
     "the number of threads explicitly (up to the number of logical CPU cores), "

@@ -28,7 +28,7 @@ DEFINE_int32(d3d12_adapter, -1,
              "-1 for any physical adapter, -2 for WARP software rendering.",
              "D3D12");
 DEFINE_int32(
-    d3d12_queue_priority, 1,
+    d3d12_queue_priority, XE_PLATFORM_WINRT ? 2 : 1,
     "Graphics (direct) command queue scheduling priority, 0 - normal, 1 - "
     "high, 2 - global realtime (requires administrator privileges, may impact "
     "system responsibility)",

@@ -30,7 +30,7 @@
 #include "xenia/ui/d3d12/d3d12_presenter.h"
 #include "xenia/ui/d3d12/d3d12_util.h"
 
-DEFINE_bool(d3d12_bindless, true,
+DEFINE_bool(d3d12_bindless, XE_PLATFORM_WINRT ? false : true,
             "Use bindless resources where available - may improve performance, "
             "but may make debugging more complicated.",
             "D3D12");

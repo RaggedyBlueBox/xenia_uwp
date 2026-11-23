@@ -46,7 +46,7 @@ DEFINE_bool(
     "Display");
 
 DEFINE_bool(
-    present_letterbox, true,
+    present_letterbox, XE_PLATFORM_WINRT ? false : true,
     "Maintain aspect ratio when stretching by displaying bars around the image "
     "when there's no more overscan area to crop out.",
     "Display");
