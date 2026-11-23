@@ -264,7 +264,11 @@ bool Memory::Initialize() {
   // without any restriction. This however needs some form of validation.
   // That's why we're commiting whole physical memory range and deal with
   // allocations issues on custom page protection level.
-  for (size_t i = 0; i < 32; i++) {
+  // Commit only the low pages up front (the crash at guest physical base
+  // proved [0, 16 MB) must be resident). The rest commits on demand: a full
+  // 512 MB pre-commit costs half a gigabyte of commit charge against the
+  // app quota on Xbox, which starves world generation (error 1455).
+  for (size_t i = 0; i < 2; i++) {
     xe::memory::AllocFixed(heaps_.physical.TranslateRelative(i << 24),
                            heaps_.physical.page_size() * 0x1000,
                            xe::memory::AllocationType::kCommit,
